@@ -52,3 +52,8 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# User secrets and local settings
+appsettings.Development.json
+appsettings.Local.json
+secrets.json
