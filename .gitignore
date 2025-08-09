@@ -1,0 +1,1 @@
+# Dotnet\n**/bin/\n**/obj/\n*.user\n*.rsuser\n*.suo\n*.userosscache\n*.sln.docstates\n# VS Code\n.vscode/\n.history/\n# Node\nnode_modules/\nweb/**/node_modules/\nweb/**/dist/\nweb/**/build/\n# dotenv\n.env\n.env.*.local\n# Rider\n.idea/\n# Logs\nlogs/\n*.log\n# Secrets\nsecrets.json\n# Local settings\nappsettings.Development.json
