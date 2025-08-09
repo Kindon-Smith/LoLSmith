@@ -1,1 +1,35 @@
-# Dotnet\n**/bin/\n**/obj/\n*.user\n*.rsuser\n*.suo\n*.userosscache\n*.sln.docstates\n# VS Code\n.vscode/\n.history/\n# Node\nnode_modules/\nweb/**/node_modules/\nweb/**/dist/\nweb/**/build/\n# dotenv\n.env\n.env.*.local\n# Rider\n.idea/\n# Logs\nlogs/\n*.log\n# Secrets\nsecrets.json\n# Local settings\nappsettings.Development.json
+# Dotnet
+**/bin/
+**/obj/
+*.user
+*.rsuser
+*.suo
+*.userosscache
+*.sln.docstates
+
+# VS Code
+.vscode/
+.history/
+
+# Node
+node_modules/
+web/**/node_modules/
+web/**/dist/
+web/**/build/
+
+# dotenv
+.env
+.env.*.local
+
+# Rider
+.idea/
+
+# Logs
+logs/
+*.log
+
+# Secrets
+secrets.json
+
+# Local settings
+appsettings.Development.json

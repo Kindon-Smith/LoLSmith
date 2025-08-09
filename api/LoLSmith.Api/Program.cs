@@ -33,6 +33,18 @@ app.MapGet("/weatherforecast", () =>
 })
 .WithName("GetWeatherForecast");
 
+// Simple root endpoint to verify the API is running
+app.MapGet("/", () => Results.Ok(new
+{
+    name = "LoLSmith.Api",
+    status = "ok",
+    endpoints = new[]
+    {
+        "/weatherforecast",
+        "/openapi/v1.json"
+    }
+}));
+
 app.Run();
 
 record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
