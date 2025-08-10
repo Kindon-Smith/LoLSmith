@@ -1,8 +1,19 @@
+using Options.RiotOptions;
+using Microsoft.Extensions.Options;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+
+// Add API key from secrets to builder
+builder.Services.AddOptions<RiotOptions>()
+                .Bind(builder.Configuration.GetSection("Riot"))
+                .ValidateDataAnnotations()
+                .Validate(o => !string.IsNullOrWhiteSpace(o.ApiKey), "Riot:ApiKey is missing")
+                .ValidateOnStart();
 
 var app = builder.Build();
 
@@ -14,24 +25,6 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
 
 // Simple root endpoint to verify the API is running
 app.MapGet("/", () => Results.Ok(new
@@ -40,10 +33,13 @@ app.MapGet("/", () => Results.Ok(new
     status = "ok",
     endpoints = new[]
     {
-        "/weatherforecast",
-        "/openapi/v1.json"
+        "/",
+        "/config-check"
     }
 }));
+
+app.MapGet("/config-check", (IOptions<RiotOptions> o) => string.IsNullOrWhiteSpace(o.Value.ApiKey) ?
+    Results.Problem("Missing") : Results.Ok(new { status = "ok" }));
 
 app.Run();
 
