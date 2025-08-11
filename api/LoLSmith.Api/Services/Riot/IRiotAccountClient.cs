@@ -1,8 +1,10 @@
+using Services.Riot.Dto;
 using Services.Riot.Dtos;
+using Utils;
 
 namespace Services.Riot;
 
 public interface IRiotAccountClient
 {
-    Task<PuuidDto?> GetPuuidByRiotIdAsync(string platform, string riotName, string riotTag, CancellationToken ct = default);
+    Task<RiotAccountDto?> GetPuuidByRiotIdAsync(string platform, string riotName, string riotTag, CancellationToken ct = default);
 }

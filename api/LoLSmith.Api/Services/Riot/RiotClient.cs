@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Options;
 using Options.RiotOptions;
 using Services.Riot;
+using Services.Riot.Dto;
 using Services.Riot.Dtos;
+using Utils;
 
 public class RiotClient : IRiotClient, IRiotAccountClient
 {
@@ -23,7 +25,7 @@ public class RiotClient : IRiotClient, IRiotAccountClient
         request.Headers.Accept.ParseAdd("application/json");
 
         var res = await _http.SendAsync(request, ct);
-        VerifyStatusCode(res);
+        ApiResponseValidator.VerifyStatusCode(res);
 
         var dto = await res.Content.ReadFromJsonAsync<SummonerDto>
             (new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true },
@@ -32,7 +34,7 @@ public class RiotClient : IRiotClient, IRiotAccountClient
         return dto ?? throw new KeyNotFoundException("Summoner not found for the given name");
     }
 
-    public async Task<PuuidDto?> GetPuuidByRiotIdAsync(string platform, string riotName, string riotTag, CancellationToken ct = default)
+    public async Task<RiotAccountDto?> GetPuuidByRiotIdAsync(string platform, string riotName, string riotTag, CancellationToken ct = default)
     {
         //https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/Blue/lim3
         var url = $"https://{platform}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{Uri.EscapeDataString(riotName)}/{Uri.EscapeDataString(riotTag)}";
@@ -42,32 +44,12 @@ public class RiotClient : IRiotClient, IRiotAccountClient
         request.Headers.Accept.ParseAdd("application/json");
 
         var res = await _http.SendAsync(request, ct);
-        VerifyStatusCode(res);
+        ApiResponseValidator.VerifyStatusCode(res);
 
-        var puuidDto = await res.Content.ReadFromJsonAsync<PuuidDto>
+        var riotAccountDto = await res.Content.ReadFromJsonAsync<RiotAccountDto>
             (new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true },
             ct);
-        return puuidDto ?? throw new KeyNotFoundException("Puuid not found for the given Riot ID");
+        return riotAccountDto ?? throw new KeyNotFoundException("Riot Account not found for the given Riot ID");
     }
 
-    public void VerifyStatusCode(HttpResponseMessage res)
-    {
-        if (res.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
-            throw new KeyNotFoundException("Summoner not found");
-        }
-        else if (res.StatusCode == System.Net.HttpStatusCode.Forbidden ||
-                 res.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-        {
-            throw new InvalidOperationException("Invalid or Expired Riot API key");
-        }
-        else if (res.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
-        {
-            throw new InvalidOperationException("Rate limited by Riot API");
-        }
-        else
-        {
-            res.EnsureSuccessStatusCode();
-        }
-    }
 }

@@ -18,7 +18,6 @@ builder.Services.AddOptions<RiotOptions>()
                 .ValidateDataAnnotations()
                 .Validate(o => !string.IsNullOrWhiteSpace(o.ApiKey), "Riot:ApiKey is missing")
                 .ValidateOnStart();
-builder.Services.AddHttpClient<IRiotClient, RiotClient>();
 // Also use the same typed client for Account-V1 calls (PUUID via Riot ID)
 builder.Services.AddHttpClient<IRiotAccountClient, RiotClient>();
 
