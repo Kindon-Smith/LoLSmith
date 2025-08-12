@@ -1,4 +1,4 @@
-namespace Services.Riot.Dto;
+namespace Services.Riot.Dtos;
 
 public class RiotAccountDto
 {

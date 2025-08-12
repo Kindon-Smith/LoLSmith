@@ -33,3 +33,11 @@ secrets.json
 
 # Local settings
 appsettings.Development.json
+
+# Database
+LoLSmith.db
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+Migrations/

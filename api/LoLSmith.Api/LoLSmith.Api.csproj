@@ -8,8 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.8" />
-    <Compile Include="..\utils\**\*.cs" />
+  <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.8" />
+  <!-- Include shared utils and db folders which are siblings of the 'api' folder -->
+  <Compile Include="..\..\utils\**\*.cs" />
+  <Compile Include="..\..\db\**\*.cs" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.8">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

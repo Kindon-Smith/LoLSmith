@@ -1,9 +1,11 @@
 using Options.RiotOptions;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 using Services.Riot;
 using Services.Riot.Dtos;
+using LoLSmith.Db;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +22,16 @@ builder.Services.AddOptions<RiotOptions>()
                 .ValidateOnStart();
 // Also use the same typed client for Account-V1 calls (PUUID via Riot ID)
 builder.Services.AddHttpClient<IRiotAccountClient, RiotClient>();
+
+// Resolve absolute path to solution root (parent of the api project) and place DB in /db/LoLSmith.db
+// Go up two directories: from .../LoLSmith.Api -> ../api -> ../ (solution root)
+var solutionRoot = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", ".."));
+var dbFolder = Path.Combine(solutionRoot, "db");
+Directory.CreateDirectory(dbFolder); // ensure folder exists
+var dbPath = Path.Combine(dbFolder, "LoLSmith.db");
+
+builder.Services.AddDbContext<LoLSmithDbContext>(options =>
+    options.UseSqlite($"Data Source={dbPath}"));
 
 var app = builder.Build();
 
@@ -41,7 +53,7 @@ app.MapGet("/", () => Results.Ok(new
     {
         "/",
         "/config-check",
-        "/api/summoners/{platform}/{name}"
+        "/api/summoners/{region}/{name}/{tag}"
     }
 }));
 
@@ -53,7 +65,10 @@ string[] allowedPlatforms = ["americas", "europe", "asia"];
 
 // Lookup PUUID by Riot ID (gameName + tagLine) using regional routing
 app.MapGet("/api/summoners/{platform}/{name}/{tag}",
-    async (string platform, string name, string tag, [FromServices] IRiotAccountClient accounts, CancellationToken ct) =>
+    async (string platform, string name, string tag,
+           [FromServices] IRiotAccountClient accounts,
+           [FromServices] LoLSmithDbContext db,
+           CancellationToken ct) =>
     {
         // validate platform
         if (!allowedPlatforms.Contains(platform, StringComparer.OrdinalIgnoreCase))
@@ -67,8 +82,28 @@ app.MapGet("/api/summoners/{platform}/{name}/{tag}",
         // 404 mapping
         if (dto is null) return Results.NotFound();
 
-        // return only the PUUID for now
-        return Results.Ok(new { dto.Puuid });
+        // Upsert lightweight user record based on PUUID
+        var existing = await db.Users.FirstOrDefaultAsync(u => u.Puuid == dto.Puuid, ct);
+        if (existing is null)
+        {
+            db.Users.Add(new User
+            {
+                Puuid = dto.Puuid,
+                SummonerName = dto.GameName,
+                TagLine = dto.TagLine,
+                LastUpdated = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync(ct);
+        }
+        else if (existing.SummonerName != dto.GameName || existing.TagLine != dto.TagLine)
+        {
+            existing.SummonerName = dto.GameName;
+            existing.TagLine = dto.TagLine;
+            existing.LastUpdated = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+
+        return Results.Ok(new { dto.Puuid, dto.GameName, dto.TagLine });
     })
     .WithName("GetPuuidByRiotId")
     .WithOpenApi();
