@@ -15,5 +15,14 @@ public class LoLSmithDbContext : DbContext
         modelBuilder.Entity<User>()
             .HasIndex(u => u.Puuid)
             .IsUnique();
+        modelBuilder.Entity<Match>()
+            .HasIndex(m => m.MatchId)
+            .IsUnique();
+        modelBuilder.Entity<Match>()
+            .HasIndex(m => new
+            {
+                m.Participants, m.MatchId
+            })
+            .IsUnique();
     }
 }
