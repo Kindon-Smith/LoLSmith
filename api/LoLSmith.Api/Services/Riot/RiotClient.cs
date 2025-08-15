@@ -54,4 +54,19 @@ public class RiotClient : IRiotAccountClient, IRiotMatchClient
         return matches is null ? null : new MatchListDto { Matches = matches };
     }
 
+    public async Task<MatchDetailsDto?> GetMatchDetailsByIdAsync(string platform, string matchId, CancellationToken ct = default)
+    {
+        var url = $"https://{platform}.api.riotgames.com/lol/match/v5/matches/{matchId}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.TryAddWithoutValidation("X-Riot-Token", _options.CurrentValue.ApiKey);
+        request.Headers.Accept.ParseAdd("application/json");
+
+        var res = await _http.SendAsync(request, ct);
+        ApiResponseValidator.VerifyStatusCode(res);
+
+        return await res.Content.ReadFromJsonAsync<MatchDetailsDto>
+            (new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }, ct);
+    }
+
 }
