@@ -18,8 +18,11 @@ public class SummonerController : ControllerBase
     }
 
     [HttpGet("{platform}/{name}/{tag}")]
+    // /api/summoners/{region}/{name}/{tag}
+
     public async Task<IActionResult> GetPuuidByRiotId(string platform, string name, string tag, CancellationToken ct)
     {
+
         // validate platform
         if (!allowedPlatforms.Contains(platform, StringComparer.OrdinalIgnoreCase))
         {
