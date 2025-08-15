@@ -1,10 +1,11 @@
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.Extensions.Options;
 using Options.RiotOptions;
 using Services.Riot;
 using Services.Riot.Dtos;
 using Utils;
 
-public class RiotClient : IRiotClient, IRiotAccountClient
+public class RiotClient : IRiotAccountClient, IRiotMatchClient
 {
 
     private readonly HttpClient _http;
@@ -15,22 +16,6 @@ public class RiotClient : IRiotClient, IRiotAccountClient
         _options = options;
 
         _http.Timeout = TimeSpan.FromSeconds(10);
-    }
-    public async Task<SummonerDto?> GetSummonerByNameAsync(string platform, string name, CancellationToken ct = default)
-    {
-        var url = $"https://{platform}.api.riotgames.com/lol/summoner/v4/summoners/by-name/{Uri.EscapeDataString(name)}";
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.TryAddWithoutValidation("X-Riot-Token", _options.CurrentValue.ApiKey);
-        request.Headers.Accept.ParseAdd("application/json");
-
-        var res = await _http.SendAsync(request, ct);
-        ApiResponseValidator.VerifyStatusCode(res);
-
-        var dto = await res.Content.ReadFromJsonAsync<SummonerDto>
-            (new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true },
-            ct);
-
-        return dto ?? throw new KeyNotFoundException("Summoner not found for the given name");
     }
 
     public async Task<RiotAccountDto?> GetPuuidByRiotIdAsync(string platform, string riotName, string riotTag, CancellationToken ct = default)
@@ -49,6 +34,39 @@ public class RiotClient : IRiotClient, IRiotAccountClient
             (new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true },
             ct);
         return riotAccountDto ?? throw new KeyNotFoundException("Riot Account not found for the given Riot ID");
+    }
+
+    public async Task<MatchListDto?> GetMatchesByPuuidAsync(string platform, string puuid, CancellationToken ct = default)
+    {
+        var url = $"https://{platform}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.TryAddWithoutValidation("X-Riot-Token", _options.CurrentValue.ApiKey);
+        request.Headers.Accept.ParseAdd("application/json");
+
+        var res = await _http.SendAsync(request, ct);
+        ApiResponseValidator.VerifyStatusCode(res);
+
+        var matches = await res.Content.ReadFromJsonAsync<List<string>>
+            (new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }, ct);
+
+        // Wrap in your DTO if needed
+        return matches is null ? null : new MatchListDto { Matches = matches };
+    }
+
+    public async Task<MatchDetailsDto?> GetMatchDetailsByIdAsync(string platform, string matchId, CancellationToken ct = default)
+    {
+        var url = $"https://{platform}.api.riotgames.com/lol/match/v5/matches/{matchId}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.TryAddWithoutValidation("X-Riot-Token", _options.CurrentValue.ApiKey);
+        request.Headers.Accept.ParseAdd("application/json");
+
+        var res = await _http.SendAsync(request, ct);
+        ApiResponseValidator.VerifyStatusCode(res);
+
+        return await res.Content.ReadFromJsonAsync<MatchDetailsDto>
+            (new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }, ct);
     }
 
 }
