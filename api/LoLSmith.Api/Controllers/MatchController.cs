@@ -3,6 +3,7 @@ using LoLSmith.Db;
 using Services.Riot;
 using Microsoft.EntityFrameworkCore;
 using Services.Riot.Dtos;
+using LoLSmith.Api.Controllers.Mappers;
 
 [ApiController]
 [Route("api/matches")]
@@ -195,7 +196,7 @@ public class MatchController : ControllerBase
             }
         }
 
-        return Ok(matchDetailsDto);
+        return Ok(matchDetailsDto.ToResponse());
     }
 
     [HttpGet("debug/tables")]
