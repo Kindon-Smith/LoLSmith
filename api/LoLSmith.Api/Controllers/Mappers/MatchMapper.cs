@@ -13,11 +13,11 @@ public static class MatchMapper
             MatchId = dto.Metadata?.MatchId ?? string.Empty,
             GameCreationUtc = DateTimeOffset.FromUnixTimeMilliseconds(info.GameCreation).UtcDateTime,
             GameDuration = (int)info.GameDuration,
-            GameMode = info.GameMode,
-            GameType = info.GameType,
-            GameVersion = info.GameVersion,
+            GameMode = info.GameMode ?? string.Empty,
+            GameType = info.GameType ?? string.Empty,
+            GameVersion = info.GameVersion ?? string.Empty,
             MapId = info.MapId,
-            PlatformId = info.PlatformId,
+            PlatformId = info.PlatformId ?? string.Empty,
             QueueId = info.QueueId,
             Participants = dto.Metadata?.Participants?.ToList() ?? new List<string>()
         };
