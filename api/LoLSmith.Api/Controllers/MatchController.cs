@@ -116,6 +116,85 @@ public class MatchController : ControllerBase
         // 404 mapping
         if (matchDetailsDto is null) return NotFound();
 
+        // Find or create the match in the DB
+        var match = await _db.Matches.FirstOrDefaultAsync(m => m.MatchId == matchId, ct);
+        if (match == null)
+        {
+            match = new Match { MatchId = matchId, InsertedAt = DateTime.UtcNow };
+            _db.Matches.Add(match);
+        }
+
+        // Map fields from InfoDto to Match entity
+        var info = matchDetailsDto.Info;
+        match.GameCreation = DateTimeOffset.FromUnixTimeMilliseconds(info.GameCreation).UtcDateTime;
+        match.GameDuration = info.GameDuration;
+        match.GameMode = info.GameMode;
+        match.GameType = info.GameType;
+        match.GameVersion = info.GameVersion;
+        match.MapId = info.MapId;
+        match.PlatformId = info.PlatformId;
+        match.QueueId = info.QueueId;
+
+        // persist participants -> create Users and UserMatches for each participant PUUID
+        var participants = matchDetailsDto.Metadata?.Participants != null 
+            ? matchDetailsDto.Metadata.Participants 
+            : new List<string>();
+
+        if (participants.Count > 0)
+        {
+            // fetch existing users for these puuids
+            var existingUsers = await _db.Users
+                .Where(u => participants.Contains(u.Puuid!))
+                .ToListAsync(ct);
+
+            var existingPuuids = existingUsers.Select(u => u.Puuid!).ToHashSet(StringComparer.Ordinal);
+
+            // create missing users
+            var newUsers = participants
+                .Where(p => !existingPuuids.Contains(p))
+                .Select(p => new User { Puuid = p, LastUpdated = DateTime.UtcNow })
+                .ToList();
+
+            if (newUsers.Count > 0)
+            {
+                _db.Users.AddRange(newUsers);
+                await _db.SaveChangesAsync(ct);
+                existingUsers.AddRange(newUsers);
+            }
+
+            // ensure match has an Id
+            if (match.Id == 0)
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+
+            // get existing user ids already linked to this match
+            var existingUserMatchUserIds = await _db.UserMatches
+                .Where(um => um.MatchId == match.Id)
+                .Select(um => um.UserId)
+                .ToListAsync(ct);
+
+            var toAdd = new List<UserMatches>();
+            foreach (var user in existingUsers)
+            {
+                if (!existingUserMatchUserIds.Contains(user.Id))
+                {
+                    toAdd.Add(new UserMatches
+                    {
+                        UserId = user.Id,
+                        MatchId = match.Id,
+                        InsertedAt = DateTime.UtcNow
+                    });
+                }
+            }
+
+            if (toAdd.Count > 0)
+            {
+                _db.UserMatches.AddRange(toAdd);
+                await _db.SaveChangesAsync(ct);
+            }
+        }
+
         return Ok(matchDetailsDto);
     }
 
