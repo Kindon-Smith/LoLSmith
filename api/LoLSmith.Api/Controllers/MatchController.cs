@@ -137,8 +137,8 @@ public class MatchController : ControllerBase
         match.QueueId = info.QueueId;
 
         // persist participants -> create Users and UserMatches for each participant PUUID
-        var participants = matchDetailsDto.Metadata?.Participants != null 
-            ? matchDetailsDto.Metadata.Participants 
+        var participants = matchDetailsDto.Metadata?.Participants != null
+            ? matchDetailsDto.Metadata.Participants.Select(p => p.Puuid).ToList()
             : new List<string>();
 
         if (participants.Count > 0)
