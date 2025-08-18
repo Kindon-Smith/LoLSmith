@@ -11,5 +11,5 @@ public class MatchDetailsResponse
     public int MapId { get; set; }
     public string PlatformId { get; set; } = string.Empty;
     public int QueueId { get; set; }
-    public List<string> Participants { get; set; } = new();
+    public List<string>? Participants { get; set; } = new();
 }
