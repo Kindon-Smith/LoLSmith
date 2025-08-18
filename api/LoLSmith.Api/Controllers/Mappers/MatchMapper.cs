@@ -19,7 +19,7 @@ public static class MatchMapper
             MapId = info.MapId,
             PlatformId = info.PlatformId ?? string.Empty,
             QueueId = info.QueueId,
-            Participants = dto.Metadata?.Participants?.ToList() ?? new List<string>()
+            Participants = dto.Metadata?.Participants?.Select(p => p.Puuid).ToList()
         };
     }
 }
