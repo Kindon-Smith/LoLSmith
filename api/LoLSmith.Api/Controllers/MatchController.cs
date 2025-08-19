@@ -138,7 +138,7 @@ public class MatchController : ControllerBase
 
         // persist participants -> create Users and UserMatches for each participant PUUID
         var participants = matchDetailsDto.Metadata?.Participants != null
-            ? matchDetailsDto.Metadata.Participants.Select(p => p.Puuid).ToList()
+            ? matchDetailsDto.Metadata.Participants?.ToList()
             : new List<string>();
 
         if (participants.Count > 0)

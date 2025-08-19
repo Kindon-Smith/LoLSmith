@@ -59,7 +59,6 @@ public class RiotClient : IRiotAccountClient, IRiotMatchClient
         request.Headers.Accept.ParseAdd("application/json");
 
         var res = await _http.SendAsync(request, ct);
-        ApiResponseValidator.VerifyStatusCode(res);
 
         var riotAccountDto = await res.Content.ReadFromJsonAsync<RiotAccountDto>
             (new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true },
@@ -75,6 +74,7 @@ public class RiotClient : IRiotAccountClient, IRiotMatchClient
         request.Headers.TryAddWithoutValidation("X-Riot-Token", _options.CurrentValue.ApiKey);
         request.Headers.Accept.ParseAdd("application/json");
 
+        await WaitForRateLimit(ct);
         var res = await _http.SendAsync(request, ct);
         ApiResponseValidator.VerifyStatusCode(res);
 

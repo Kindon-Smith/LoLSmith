@@ -11,7 +11,7 @@ public class RiotOptions
     public class RateLimitOptions
     {
         public bool Enabled { get; set; } = true;
-        public int MaxRequestsPerMinute { get; set; } = 0;
+        public int MaxRequestsPerMinute { get; set; } = 20;
 
     }
 }

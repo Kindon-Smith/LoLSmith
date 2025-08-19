@@ -24,6 +24,8 @@ builder.Services.AddOptions<RiotOptions>()
 builder.Services.AddHttpClient<IRiotAccountClient, RiotClient>();
 builder.Services.AddHttpClient<IRiotMatchClient, RiotClient>();
 
+builder.Services.AddTransient<RateLimitHandler>();
+
 // Resolve absolute path to solution root (parent of the api project) and place DB in /db/LoLSmith.db
 // Go up two directories: from .../LoLSmith.Api -> ../api -> ../ (solution root)
 var solutionRoot = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", ".."));
