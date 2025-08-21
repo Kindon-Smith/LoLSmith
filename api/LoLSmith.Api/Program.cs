@@ -2,6 +2,7 @@ using Options.RiotOptions;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Swashbuckle.AspNetCore.SwaggerGen;
 
 using Services.Riot;
 using Services.Riot.Dtos;
@@ -11,7 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddSwaggerGen();
 
 
 // Add API key from secrets to builder
@@ -36,16 +37,31 @@ var dbPath = Path.Combine(dbFolder, "LoLSmith.db");
 builder.Services.AddDbContext<LoLSmithDbContext>(options =>
     options.UseSqlite($"Data Source={dbPath}"));
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("DevCors", policy =>
+    {
+        policy.WithOrigins("http://localhost:3000")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
+
 builder.Services.AddControllers();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+app.UseCors("DevCors");
+
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    // Enable OpenAPI/Swagger in development
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
+// Configure the HTTP request pipeline.
 app.UseHttpsRedirection();
 
 
