@@ -24,6 +24,8 @@ builder.Services.AddOptions<RiotOptions>()
 builder.Services.AddHttpClient<IRiotAccountClient, RiotClient>();
 builder.Services.AddHttpClient<IRiotMatchClient, RiotClient>();
 
+builder.Services.AddTransient<RateLimitHandler>();
+
 // Resolve absolute path to solution root (parent of the api project) and place DB in /db/LoLSmith.db
 // Go up two directories: from .../LoLSmith.Api -> ../api -> ../ (solution root)
 var solutionRoot = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", ".."));
@@ -48,17 +50,22 @@ app.UseHttpsRedirection();
 
 
 // Simple root endpoint to verify the API is running
-app.MapGet("/", () => Results.Ok(new
+app.MapGet("/", (EndpointDataSource endpointData) =>
 {
-    name = "LoLSmith.Api",
-    status = "ok",
-    endpoints = new[]
+    var routes = endpointData.Endpoints
+        .OfType<RouteEndpoint>()
+        .Select(e => e.RoutePattern?.RawText ?? e.DisplayName ?? string.Empty)
+        .Where(s => !string.IsNullOrWhiteSpace(s))
+        .Distinct()
+        .OrderBy(s => s)
+        .ToList();
+    return Results.Ok(new
     {
-        "/",
-        "/config-check",
-        "/api/summoners/{region}/{name}/{tag}"
-    }
-}));
+        name = "LoLSmith.Api",
+        status = "ok",
+        endpoints = routes
+    });
+});
 
 app.MapGet("/config-check", (IOptions<RiotOptions> o) => string.IsNullOrWhiteSpace(o.Value.ApiKey) ?
     Results.Problem("Missing") : Results.Ok(new { status = "ok" }));
