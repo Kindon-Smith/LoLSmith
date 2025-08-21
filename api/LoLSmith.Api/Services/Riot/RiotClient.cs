@@ -21,34 +21,6 @@ public class RiotClient : IRiotAccountClient, IRiotMatchClient
         _http.Timeout = TimeSpan.FromSeconds(10);
     }
 
-    private async Task WaitForRateLimit(CancellationToken ct = default)
-    {
-        if (!_options.CurrentValue.RateLimit.Enabled) return;
-        var maxRequests = _options.CurrentValue.RateLimit.MaxRequestsPerMinute;
-        while (true)
-        {
-            TimeSpan waitTime = TimeSpan.Zero;
-            lock (_lockObject)
-            {
-                var now = DateTime.UtcNow;
-                var elapsed = now - _windowStart;
-                if (elapsed >= TimeSpan.FromMinutes(1))
-                {
-                    _requestCount = 0;
-                    _windowStart = now;
-                }
-                if (_requestCount < maxRequests)
-                {
-                    _requestCount++;
-                    return;
-                }
-                waitTime = TimeSpan.FromMinutes(1) - elapsed;
-                if (waitTime < TimeSpan.Zero) waitTime = TimeSpan.Zero;
-            }
-            await Task.Delay(waitTime, ct);
-        }
-    }
-
     public async Task<RiotAccountDto?> GetPuuidByRiotIdAsync(string platform, string riotName, string riotTag, CancellationToken ct = default)
     {
         //https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/Blue/lim3
@@ -74,7 +46,6 @@ public class RiotClient : IRiotAccountClient, IRiotMatchClient
         request.Headers.TryAddWithoutValidation("X-Riot-Token", _options.CurrentValue.ApiKey);
         request.Headers.Accept.ParseAdd("application/json");
 
-        await WaitForRateLimit(ct);
         var res = await _http.SendAsync(request, ct);
         ApiResponseValidator.VerifyStatusCode(res);
 
