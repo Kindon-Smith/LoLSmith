@@ -11,7 +11,6 @@ public class RiotClient : IRiotAccountClient, IRiotMatchClient
     private readonly HttpClient _http;
     private readonly IOptionsMonitor<RiotOptions> _options;
 
-    private static int _requestCount = 0;
     private static DateTime _windowStart = DateTime.UtcNow;
     private static readonly object _lockObject = new();
     public RiotClient(HttpClient http, IOptionsMonitor<RiotOptions> options)
