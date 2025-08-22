@@ -4,6 +4,7 @@ using Services.Riot;
 using Microsoft.EntityFrameworkCore;
 using Services.Riot.Dtos;
 using LoLSmith.Api.Controllers.Mappers;
+using Microsoft.AspNetCore.Authorization;
 
 [ApiController]
 [Route("api/matches")]
@@ -19,7 +20,7 @@ public class MatchController : ControllerBase
         _db = db;
     }
 
-    [HttpGet("{platform}/{puuid}")]
+    [Authorize][HttpGet("{platform}/{puuid}")]
     public async Task<IActionResult> GetMatchesByPuuid(string platform, string puuid, CancellationToken ct)
     {
         // validate platform
@@ -102,7 +103,7 @@ public class MatchController : ControllerBase
         return Ok(matchListDto);
     }
 
-    [HttpGet("{platform}/details/{matchId}")]
+    [Authorize][HttpGet("{platform}/details/{matchId}")]
     public async Task<IActionResult> GetMatchDetailsById(string platform, string matchId, CancellationToken ct = default)
     {
         // validate platform
@@ -238,7 +239,7 @@ public class MatchController : ControllerBase
         }
     }
 
-    [HttpGet("debug/match/{matchId}")]
+    [Authorize][HttpGet("debug/match/{matchId}")]
     public async Task<IActionResult> DebugGetMatch(string matchId)
     {
         var m = await _db.Matches

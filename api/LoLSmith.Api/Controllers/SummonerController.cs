@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using LoLSmith.Db;
 using Services.Riot;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 
 [ApiController]
 [Route("api/summoners")]
@@ -17,7 +18,7 @@ public class SummonerController : ControllerBase
         _db = db;
     }
 
-    [HttpGet("{platform}/{name}/{tag}")]
+    [Authorize][HttpGet("{platform}/{name}/{tag}")]
     // /api/summoners/{region}/{name}/{tag}
 
     public async Task<IActionResult> GetPuuidByRiotId(string platform, string name, string tag, CancellationToken ct)

@@ -16,7 +16,6 @@ public class RateLimitHandler : DelegatingHandler
     private static DateTime _lastRefill = DateTime.UtcNow;
 
     public RateLimitHandler(IOptionsMonitor<RiotOptions> options, ILogger<RateLimitHandler> logger)
-        : base(new HttpClientHandler())
     {
         _options = options;
         _logger = logger;
