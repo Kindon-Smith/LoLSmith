@@ -6,6 +6,8 @@ using Swashbuckle.AspNetCore.SwaggerGen;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 
 using Services.Riot;
 using Services.Riot.Dtos;
@@ -81,35 +83,75 @@ var app = builder.Build();
 
 // simple API-key middleware for trusted frontend (set Frontend:ApiKey via user-secrets)
 var frontendKey = builder.Configuration["Frontend:ApiKey"];
+
 app.Use(async (ctx, next) =>
 {
+    // allow auth endpoints to run without client API key
+    if (ctx.Request.Path.StartsWithSegments("/api/auth", StringComparison.OrdinalIgnoreCase))
+    {
+        await next();
+        return;
+    }
+
     if (ctx.Request.Path.StartsWithSegments("/api"))
     {
+        var config = ctx.RequestServices.GetRequiredService<IConfiguration>();
+        var isDev = app.Environment.IsDevelopment();
+        var jwtConfigured = !string.IsNullOrWhiteSpace(config["Auth:JwtKey"]);
+
         if (string.IsNullOrWhiteSpace(frontendKey))
         {
             await next();
             return;
         }
 
-        if (ctx.Request.Headers.TryGetValue("X-Client-ApiKey", out var k) && k == frontendKey)
+        if (ctx.Request.Headers.TryGetValue("X-Client-ApiKey", out var k))
         {
-            // create a simple authenticated identity for API-key clients
-            var claims = new[] { new System.Security.Claims.Claim("client_id", "frontend") };
-            var identity = new System.Security.Claims.ClaimsIdentity(claims, "ApiKey");
-            ctx.User = new System.Security.Claims.ClaimsPrincipal(identity);
+            if (k == frontendKey)
+            {
+                // create a simple authenticated identity for API-key clients
+                var claims = new[] { new System.Security.Claims.Claim("client_id", "frontend") };
+                var identity = new System.Security.Claims.ClaimsIdentity(claims, "ApiKey");
+                ctx.User = new System.Security.Claims.ClaimsPrincipal(identity);
 
-            await next();
-            return;
+                await next();
+                return;
+            }
+            else
+            {
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                ctx.Response.ContentType = "application/json";
+                var payload = new { error = "Invalid API key", hint = isDev ? "Ensure Frontend:ApiKey matches X-Client-ApiKey header" : null };
+                await ctx.Response.WriteAsync(JsonSerializer.Serialize(payload));
+                return;
+            }
         }
 
         if (ctx.Request.Headers.ContainsKey("Authorization"))
         {
-            await next();
+            if (!jwtConfigured)
+            {
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                ctx.Response.ContentType = "application/json";
+                var payload = new { error = "Authorization header present but server JWT is not configured", hint = isDev ? "Set Auth:JwtKey in user-secrets or use X-Client-ApiKey for dev" : null };
+                await ctx.Response.WriteAsync(JsonSerializer.Serialize(payload));
+                return;
+            }
+
+            await next(); // let JwtBearer middleware validate the token
             return;
         }
 
+        // no credentials provided
         ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        await ctx.Response.WriteAsync("Unauthorized");
+        ctx.Response.ContentType = "application/json";
+        var missingPayload = new
+        {
+            error = "Missing credentials",
+            detail = "Provide X-Client-ApiKey header or Authorization: Bearer <token>",
+            hint = isDev ? "You can set Frontend:ApiKey via dotnet user-secrets for dev" : null
+        };
+        await ctx.Response.WriteAsync(JsonSerializer.Serialize(missingPayload));
         return;
     }
 
