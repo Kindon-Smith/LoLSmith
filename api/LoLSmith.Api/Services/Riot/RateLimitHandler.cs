@@ -1,4 +1,3 @@
-using System.Net;
 using System.Net.Http;
 using Microsoft.Extensions.Options;
 using Options.RiotOptions;
@@ -7,83 +6,98 @@ using Utils;
 public class RateLimitHandler : DelegatingHandler
 {
     private readonly IOptionsMonitor<RiotOptions> _options;
-    private readonly object _lock = new();
-    private double _tokens;
-    private DateTime _lastRefill = DateTime.UtcNow;
+    private readonly ILogger<RateLimitHandler> _logger;
 
-    public RateLimitHandler(IOptionsMonitor<RiotOptions> options)
+    private static readonly object _lockObject = new();
+
+    private static double _tokens;
+    private static double _capacity;
+    private static double _fillRatePerSecond;
+    private static DateTime _lastRefill = DateTime.UtcNow;
+
+    public RateLimitHandler(IOptionsMonitor<RiotOptions> options, ILogger<RateLimitHandler> logger)
     {
         _options = options;
+        _logger = logger;
+
+        var maxPerMinute = Math.Max(1, _options.CurrentValue.RateLimit.MaxRequestsPerMinute);
+
+        lock (_lockObject)
+        {
+            _capacity = maxPerMinute;
+            _fillRatePerSecond = maxPerMinute / 60.0;
+            if (_tokens == 0) _tokens = _capacity;
+            _lastRefill = DateTime.UtcNow;
+        }
     }
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        var cfg = _options.CurrentValue.RateLimit;
-        if (!cfg.Enabled) return await base.SendAsync(request, cancellationToken);
-
-        // token-bucket params
-        var maxPerMinute = Math.Max(1, cfg.MaxRequestsPerMinute);
-        var maxTokens = maxPerMinute; // allow bursting up to the minute budget
-        var refillPerSecond = maxPerMinute / 60.0;
-        var maxQueueDelaySeconds = cfg is RateLimitWithQueueOptions q ? q.MaxQueueDelaySeconds : 5; // default small limit
-
-        // try acquire token or wait a small time
-        while (true)
+        if (_options.CurrentValue.RateLimit.Enabled)
         {
-            double waitSeconds = 0;
-            lock (_lock)
+            while (true)
             {
-                var now = DateTime.UtcNow;
-                var elapsed = (now - _lastRefill).TotalSeconds;
-                if (elapsed > 0)
+                double waitSeconds = 0;
+                lock (_lockObject)
                 {
-                    _tokens = Math.Min(maxTokens, _tokens + elapsed * refillPerSecond);
-                    _lastRefill = now;
+                    var now = DateTime.UtcNow;
+                    var elapsed = (now - _lastRefill).TotalSeconds;
+                    if (elapsed > 0)
+                    {
+                        _tokens = Math.Min(_capacity, _tokens + _fillRatePerSecond * elapsed);
+                        _lastRefill = now;
+                    }
+
+                    if (_tokens >= 1.0)
+                    {
+                        _tokens -= 1.0;
+                        _logger.LogDebug($"{nameof(RateLimitHandler)}: token acquired, tokens remaining = {_tokens}");
+                        break;
+                    }
+
+                    waitSeconds = (1.0 - _tokens) / _fillRatePerSecond;
+                    if (waitSeconds < 0) waitSeconds = 0;
                 }
 
-                if (_tokens >= 1.0)
+                _logger.LogInformation($"{nameof(RateLimitHandler)}: rate limit reached. Waiting for {Math.Ceiling(waitSeconds)} seconds");
+                try
                 {
-                    _tokens -= 1.0;
-                    waitSeconds = 0;
-                    break;
+                    await Task.Delay(TimeSpan.FromSeconds(waitSeconds), cancellationToken);
                 }
-
-                // time until next token is available
-                waitSeconds = (1.0 - _tokens) / refillPerSecond;
-            }
-
-            if (waitSeconds <= 0) continue;
-
-            if (waitSeconds > maxQueueDelaySeconds)
-            {
-                // don't block forever — reject so caller can implement retry/backoff
-                var resp = new HttpResponseMessage((HttpStatusCode)429) // Too Many Requests
+                catch (TaskCanceledException)
                 {
-                    ReasonPhrase = "Rate limit (token bucket) - request rejected instead of queued"
-                };
-                return resp;
+                    _logger.LogWarning($"{nameof(RateLimitHandler)}: request cancelled while waiting for rate limit");
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
             }
-
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(waitSeconds), cancellationToken);
-            }
-            catch (OperationCanceledException) { throw; }
         }
 
-        // send and validate
         var response = await base.SendAsync(request, cancellationToken);
+        // handle 429 retry
+        if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        {
+            _logger.LogWarning($"{nameof(RateLimitHandler)}: rate limit exceeded, retrying request");
+            var retryDelay = TimeSpan.FromSeconds(5); // Default retry delay
+            if (response.Headers.TryGetValues("Retry-After", out var values) && int.TryParse(values.FirstOrDefault(), out var seconds))
+            {
+                // Handle retry
+                retryDelay = TimeSpan.FromSeconds(seconds);
+            }
+            _logger.LogInformation($"{nameof(RateLimitHandler)}: honoring Retry-After header, waiting for {retryDelay.TotalSeconds} seconds");
+            response.Dispose();
+            try
+            {
+                await Task.Delay(retryDelay, cancellationToken);
+            }
+            catch (TaskCanceledException)
+            {
+                _logger.LogWarning($"{nameof(RateLimitHandler)}: request cancelled while waiting for retry delay");
+                cancellationToken.ThrowIfCancellationRequested();
+            }
 
-        // if Riot returns Retry-After or 429, consider honoring it (could set internal next window)
-        // let ApiResponseValidator still handle status code semantics
+            response = await base.SendAsync(request, cancellationToken);
+        }
         ApiResponseValidator.VerifyStatusCode(response);
-
         return response;
-    }
-
-    // optional typed options subclass to configure the max queue delay
-    public class RateLimitWithQueueOptions : RiotOptions.RateLimitOptions
-    {
-        public int MaxQueueDelaySeconds { get; set; } = 5;
     }
 }

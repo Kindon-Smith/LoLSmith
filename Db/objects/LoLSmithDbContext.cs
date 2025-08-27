@@ -10,6 +10,9 @@ public class LoLSmithDbContext : DbContext
 
     public DbSet<UserMatches> UserMatches { get; set; }
 
+    // moved here: class-level DbSet for refresh tokens
+    public DbSet<LoLSmith.Db.Entities.RefreshToken> RefreshTokens { get; set; }
+
     public LoLSmithDbContext(DbContextOptions<LoLSmithDbContext> options) : base(options)
     {
     }
@@ -36,4 +39,5 @@ public class LoLSmithDbContext : DbContext
             .HasIndex(m => m.MatchId)
             .IsUnique();
     }
+    
 }
