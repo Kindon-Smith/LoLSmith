@@ -15,6 +15,22 @@ using LoLSmith.Db;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// register RateLimitHandler
+builder.Services.AddTransient<RateLimitHandler>();
+
+// typed Riot clients with the rate-limit handler in the pipeline
+builder.Services.AddHttpClient<IRiotMatchClient, RiotClient>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+})
+.AddHttpMessageHandler<RateLimitHandler>();
+
+builder.Services.AddHttpClient<IRiotAccountClient, RiotClient>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+})
+.AddHttpMessageHandler<RateLimitHandler>();
+
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddSwaggerGen();
