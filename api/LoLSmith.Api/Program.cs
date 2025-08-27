@@ -89,6 +89,8 @@ if (!string.IsNullOrWhiteSpace(jwtKey))
 }
 
 builder.Services.AddControllers();
+builder.Services.AddSingleton<IBackgroundFetchQueue, BackgroundFetchQueue>();
+builder.Services.AddHostedService<BackgroundFetchWorker>();
 
 var app = builder.Build();
 

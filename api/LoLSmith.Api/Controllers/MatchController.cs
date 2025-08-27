@@ -10,209 +10,55 @@ using Microsoft.AspNetCore.Authorization;
 [Route("api/matches")]
 public class MatchController : ControllerBase
 {
-    private readonly IRiotMatchClient _matchClient;
     private readonly LoLSmithDbContext _db;
-    private static readonly string[] allowedPlatforms = ["americas", "europe", "asia"];
+    private readonly IRiotMatchClient _matches;
+    private readonly IBackgroundFetchQueue _queue;
 
-    public MatchController(IRiotMatchClient matchClient, LoLSmithDbContext db)
+    public MatchController(LoLSmithDbContext db, IRiotMatchClient matches, IBackgroundFetchQueue queue)
     {
-        _matchClient = matchClient;
-        _db = db;
+        _db = db; _matches = matches; _queue = queue;
     }
 
-    // Return match IDs by PUUID
+    // IDs by PUUID -> DB-first; refresh in background
     [Authorize]
     [HttpGet("{platform}/by-puuid/{puuid}")]
-    public async Task<IActionResult> GetMatchesByPuuid(string platform, string puuid, CancellationToken ct)
+    public async Task<IActionResult> GetIdsByPuuid(string platform, string puuid, CancellationToken ct)
     {
-        // validate platform
-        if (!allowedPlatforms.Contains(platform, StringComparer.OrdinalIgnoreCase))
-        {
-            return BadRequest(new { error = "Invalid platform code." });
-        }
-
-        // call to client (regional host e.g., americas/europe/asia)
-        var matchListDto = await _matchClient.GetMatchesByPuuidAsync(platform, puuid, ct);
-
-        // 404 mapping
-        if (matchListDto is null) return NotFound();
-
-        // Ensure user exists (lookup by puuid string)
-        var user = await _db.Users.SingleOrDefaultAsync(u => u.Puuid == puuid, ct);
-        if (user is null)
-        {
-            user = new User { Puuid = puuid, LastUpdated = DateTime.UtcNow };
-            _db.Users.Add(user);
-            await _db.SaveChangesAsync(ct); // get user.Id
-        }
-
-        var externalMatchIds = matchListDto.Matches; // List<string>
-        if (externalMatchIds == null || externalMatchIds.Count == 0)
-        {
-            return Ok(new { message = "No matches found for this PUUID." });
-        }
-
-        // Load existing Match rows by external MatchId (BATCH OPERATION)
-        var existingMatches = await _db.Matches
-            .Where(m => externalMatchIds.Contains(m.MatchId!))
-            .ToDictionaryAsync(m => m.MatchId!, ct);
-
-        // Create missing Match rows (BATCH OPERATION)
-        var missingMatchIds = externalMatchIds.Where(id => !existingMatches.ContainsKey(id)).ToList();
-        if (missingMatchIds.Count > 0)
-        {
-            var newMatches = missingMatchIds.Select(id => new Match 
-            { 
-                MatchId = id, 
-                InsertedAt = DateTime.UtcNow 
-            }).ToList();
-            
-            _db.Matches.AddRange(newMatches);
-            await _db.SaveChangesAsync(ct); // populate Match.Id values
-            
-            // Add new matches to dictionary
-            foreach (var match in newMatches)
-            {
-                existingMatches[match.MatchId!] = match;
-            }
-        }
-
-        // Now link user -> match using integer PKs, avoid duplicates (BATCH OPERATION)
-        var userId = user.Id;
-        var matchDbIds = existingMatches.Values.Select(m => m.Id).ToList();
-
-        var existingUserMatchIds = await _db.UserMatches
-            .Where(um => um.UserId == userId && matchDbIds.Contains(um.MatchId))
-            .Select(um => um.MatchId)
+        // return existing sorted by start time (denormalize or join)
+        var existing = await _db.UserMatches
+            .Where(um => um.User!.Puuid == puuid)
+            .OrderByDescending(um => um.Match!.GameCreation) // ensure Match.GameCreation exists
+            .Select(um => um.Match!.MatchId)
             .ToListAsync(ct);
 
-        var newUserMatches = existingMatches.Values
-            .Where(m => !existingUserMatchIds.Contains(m.Id))
-            .Select(m => new UserMatches 
-            { 
-                UserId = userId, 
-                MatchId = m.Id, 
-                InsertedAt = DateTime.UtcNow 
-            })
-            .ToList();
+        // fire-and-forget background refresh
+        _queue.Enqueue(new FetchUserMatchesJob(platform, puuid));
 
-        if (newUserMatches.Count > 0)
-        {
-            _db.UserMatches.AddRange(newUserMatches);
-            await _db.SaveChangesAsync(ct);
-        }
-
-        return Ok(matchListDto);
+        return Ok(existing);
     }
 
-    // Return match details by matchId
+    // Details by matchId -> DB-first; refresh in background if missing/stale
     [Authorize]
     [HttpGet("{platform}/by-id/{matchId}")]
-    public async Task<IActionResult> GetMatchById(string platform, string matchId, CancellationToken ct = default)
+    public async Task<IActionResult> GetById(string platform, string matchId, CancellationToken ct)
     {
-        // validate platform
-        if (!allowedPlatforms.Contains(platform, StringComparer.OrdinalIgnoreCase))
-        {
-            return BadRequest(new { error = "Invalid platform code." });
-        }
-
-        // call to client (regional host e.g., americas/europe/asia)
-        var matchDetailsDto = await _matchClient.GetMatchDetailsByIdAsync(platform, matchId, ct);
-
-        // 404 mapping
-        if (matchDetailsDto is null) return NotFound();
-
-        // Find or create the match in the DB
         var match = await _db.Matches.FirstOrDefaultAsync(m => m.MatchId == matchId, ct);
 
-        if (match == null)
+        // If row missing OR details missing => enqueue and return 202
+        if (match == null || string.IsNullOrWhiteSpace(match.DetailsJson))
         {
-            match = new Match { MatchId = matchId, InsertedAt = DateTime.UtcNow };
-            _db.Matches.Add(match);
+            _queue.Enqueue(new FetchMatchDetailsJob(platform, matchId));
+            Response.Headers["Retry-After"] = "2";
+            return Accepted(new { status = "fetching", matchId });
         }
 
-        // Map fields from InfoDto to Match entity (populate or update)
-        var info = matchDetailsDto.Info;
-        if (info is not null)
+        // If stale => return current and refresh in background
+        if ((DateTime.UtcNow - match.LastUpdated) > TimeSpan.FromDays(7))
         {
-            match.GameCreation = DateTimeOffset.FromUnixTimeMilliseconds(info.GameCreation).UtcDateTime;
-            match.GameDuration = info.GameDuration;
-            match.GameMode = info.GameMode;
-            match.GameType = info.GameType;
-            match.GameVersion = info.GameVersion;
-            match.MapId = info.MapId;
-            match.PlatformId = info.PlatformId;
-            match.QueueId = info.QueueId;
+            _queue.Enqueue(new FetchMatchDetailsJob(platform, matchId));
         }
 
-        // Persist only if new or modified
-        var entry = _db.Entry(match);
-        if (entry.State == EntityState.Added || entry.State == EntityState.Modified)
-        {
-            await _db.SaveChangesAsync(ct);
-        }
-
-        // persist participants -> create Users and UserMatches for each participant PUUID
-        var participants = matchDetailsDto.Metadata?.Participants != null
-            ? matchDetailsDto.Metadata.Participants?.ToList()
-            : new List<string>();
-
-        if (participants?.Count > 0)
-        {
-            // fetch existing users for these puuids
-            var existingUsers = await _db.Users
-                .Where(u => participants.Contains(u.Puuid!))
-                .ToListAsync(ct);
-
-            var existingPuuids = existingUsers.Select(u => u.Puuid!).ToHashSet(StringComparer.Ordinal);
-
-            // create missing users
-            var newUsers = participants
-                .Where(p => !existingPuuids.Contains(p))
-                .Select(p => new User { Puuid = p, LastUpdated = DateTime.UtcNow })
-                .ToList();
-
-            if (newUsers.Count > 0)
-            {
-                _db.Users.AddRange(newUsers);
-                await _db.SaveChangesAsync(ct);
-                existingUsers.AddRange(newUsers);
-            }
-
-            // ensure match has an Id
-            if (match.Id == 0)
-            {
-                await _db.SaveChangesAsync(ct);
-            }
-
-            // get existing user ids already linked to this match
-            var existingUserMatchUserIds = await _db.UserMatches
-                .Where(um => um.MatchId == match.Id)
-                .Select(um => um.UserId)
-                .ToListAsync(ct);
-
-            var toAdd = new List<UserMatches>();
-            foreach (var user in existingUsers)
-            {
-                if (!existingUserMatchUserIds.Contains(user.Id))
-                {
-                    toAdd.Add(new UserMatches
-                    {
-                        UserId = user.Id,
-                        MatchId = match.Id,
-                        InsertedAt = DateTime.UtcNow
-                    });
-                }
-            }
-
-            if (toAdd.Count > 0)
-            {
-                _db.UserMatches.AddRange(toAdd);
-                await _db.SaveChangesAsync(ct);
-            }
-        }
-
-        return Ok(matchDetailsDto.ToResponse());
+        return Content(match.DetailsJson!, "application/json");
     }
 
     [HttpGet("debug/tables")]

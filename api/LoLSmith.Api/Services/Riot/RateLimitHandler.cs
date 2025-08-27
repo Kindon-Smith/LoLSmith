@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using Options.RiotOptions;
 using Utils;
 
+namespace Services.Riot;
 public class RateLimitHandler : DelegatingHandler
 {
     private readonly IOptionsMonitor<RiotOptions> _options;

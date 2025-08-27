@@ -5,6 +5,8 @@ using Services.Riot;
 using Services.Riot.Dtos;
 using Utils;
 
+namespace Services.Riot;
+
 public class RiotClient : IRiotAccountClient, IRiotMatchClient
 {
 

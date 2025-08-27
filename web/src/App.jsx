@@ -11,6 +11,9 @@ function App() {
   const [p, setP] = useState('');
   const [out, setOut] = useState('');
 
+  // NEW: keep structured lookup state so we can update per-match
+  const [lookupState, setLookupState] = useState(null);
+
   // NEW: inputs for Riot lookup
   const [platform, setPlatform] = useState('americas');
   const [riotName, setRiotName] = useState('');
@@ -39,10 +42,43 @@ function App() {
     setOut(`${r.status}: ${await r.text()}`);
   }
 
-  // NEW: lookup flow -> get puuid -> get matches -> fetch a few details
+  // NEW: helper to update one match detail entry
+  function updateDetail(id, patch) {
+    setLookupState(prev => {
+      if (!prev) return prev;
+      const curr = prev.details?.[id] || { status: 'pending' };
+      const next = { ...curr, ...patch };
+      return { ...prev, details: { ...(prev.details || {}), [id]: next } };
+    });
+  }
+
+  // NEW: poll for a match detail until it’s ready (or timeout)
+  async function fetchMatchDetail(platform, id, attempt = 0) {
+    const res = await apiFetch(`/api/matches/${platform}/by-id/${id}`);
+    if (res.status === 202) {
+      updateDetail(id, { status: 'fetching' });
+      if (attempt < 12) {
+        const ra = res.headers.get('Retry-After');
+        const delay = ra ? Number(ra) * 1000 : 1000 * Math.min(5, attempt + 1);
+        setTimeout(() => fetchMatchDetail(platform, id, attempt + 1), delay);
+      } else {
+        updateDetail(id, { status: 'timeout' });
+      }
+      return;
+    }
+    if (!res.ok) {
+      updateDetail(id, { status: 'error', error: await res.text() });
+      return;
+    }
+    const data = await res.json();
+    updateDetail(id, { status: 'done', data });
+  }
+
+  // NEW: lookup flow -> get puuid -> get matches -> start detail polling
   async function lookup() {
     setLoading(true);
     setOut('');
+    setLookupState(null);
     try {
       if (!riotName || !riotTag) {
         setOut('Enter Riot username and tag.');
@@ -77,17 +113,13 @@ function App() {
         return;
       }
 
-      // 3) Pull a few match details (limit to first 5)
+      // 3) Initialize UI state and start polling a few details
       const firstFew = matchIds.slice(0, 5);
-      const details = await Promise.all(firstFew.map(async (id) => {
-        const dRes = await apiFetch(`/api/matches/${platform}/by-id/${id}`);
-        if (!dRes.ok) {
-          return { id, error: await dRes.text(), status: dRes.status };
-        }
-        return { id, data: await dRes.json() };
-      }));
-
-      setOut(JSON.stringify({ puuid, matches: firstFew, details }, null, 2));
+      setLookupState({ puuid, matches: firstFew, details: {} });
+      firstFew.forEach(id => {
+        updateDetail(id, { status: 'pending' });
+        fetchMatchDetail(platform, id, 0);
+      });
     } catch (err) {
       setOut(`Lookup error: ${err?.message || String(err)}`);
     } finally {
@@ -145,7 +177,33 @@ function App() {
           </div>
         </div>
 
+        {/* Results */}
         <pre style={{ marginTop: 12, whiteSpace: 'pre-wrap' }}>{out}</pre>
+
+        {/* NEW: show live-updating structured result */}
+        {lookupState && (
+          <div style={{ marginTop: 12 }}>
+            <div><b>PUUID:</b> {lookupState.puuid}</div>
+            <div style={{ marginTop: 8 }}>
+              <b>Matches:</b>
+              <ul>
+                {lookupState.matches.map(id => {
+                  const d = lookupState.details?.[id];
+                  return (
+                    <li key={id}>
+                      {id} — {d?.status || 'pending'}
+                      {d?.status === 'error' && <span> — {d.error}</span>}
+                      {d?.status === 'done' && <details style={{ marginTop: 4 }}>
+                        <summary>details</summary>
+                        <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(d.data, null, 2)}</pre>
+                      </details>}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </div>
+        )}
       </div>
     </>
   )

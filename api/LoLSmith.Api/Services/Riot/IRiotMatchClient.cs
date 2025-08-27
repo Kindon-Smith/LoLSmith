@@ -1,6 +1,7 @@
 using Services.Riot.Dtos;
 using Utils;
 
+namespace Services.Riot;
 public interface IRiotMatchClient
 {
     Task<MatchListDto?> GetMatchesByPuuidAsync(string platform, string puuid, CancellationToken ct = default);
