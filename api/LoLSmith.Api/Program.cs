@@ -42,12 +42,6 @@ builder.Services.AddOptions<RiotOptions>()
                 .Validate(o => !string.IsNullOrWhiteSpace(o.ApiKey), "Riot:ApiKey is missing")
                 .ValidateOnStart();
 
-// register handler and HttpClient via DI
-builder.Services.AddTransient<RateLimitHandler>();
-builder.Services.AddHttpClient<IRiotAccountClient, RiotClient>()
-       .AddHttpMessageHandler<RateLimitHandler>();
-builder.Services.AddHttpClient<IRiotMatchClient, RiotClient>()
-       .AddHttpMessageHandler<RateLimitHandler>();
 
 // Resolve absolute path to solution root (parent of the api project) and place DB in /db/LoLSmith.db
 // Go up two directories: from .../LoLSmith.Api -> ../api -> ../ (solution root)
@@ -66,9 +60,10 @@ builder.Services.AddMemoryCache();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("DevCors", p =>
-        p.WithOrigins("http://localhost:3000")
+        p.WithOrigins("http://localhost:3000", "http://localhost:5173")
          .AllowAnyHeader()
-         .AllowAnyMethod());
+         .AllowAnyMethod()
+         .AllowCredentials());
 });
 
 // JWT auth (dev-friendly, symmetric key from user-secrets)
@@ -209,7 +204,7 @@ app.MapGet("/config-check", (IOptions<RiotOptions> o) => string.IsNullOrWhiteSpa
     Results.Problem("Missing") : Results.Ok(new { status = "ok" }));
 
 // Valid regional hosts for Account-V1 (by-riot-id)
-string[] allowedPlatforms = ["americas", "europe", "asia"];
+string[] allowedPlatforms = new[] { "americas", "europe", "asia" };
 
 // Lookup PUUID by Riot ID (gameName + tagLine) using regional routing
 

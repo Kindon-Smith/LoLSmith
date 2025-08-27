@@ -20,7 +20,9 @@ public class MatchController : ControllerBase
         _db = db;
     }
 
-    [Authorize][HttpGet("{platform}/{puuid}")]
+    // Return match IDs by PUUID
+    [Authorize]
+    [HttpGet("{platform}/by-puuid/{puuid}")]
     public async Task<IActionResult> GetMatchesByPuuid(string platform, string puuid, CancellationToken ct)
     {
         // validate platform
@@ -103,8 +105,10 @@ public class MatchController : ControllerBase
         return Ok(matchListDto);
     }
 
-    [Authorize][HttpGet("{platform}/details/{matchId}")]
-    public async Task<IActionResult> GetMatchDetailsById(string platform, string matchId, CancellationToken ct = default)
+    // Return match details by matchId
+    [Authorize]
+    [HttpGet("{platform}/by-id/{matchId}")]
+    public async Task<IActionResult> GetMatchById(string platform, string matchId, CancellationToken ct = default)
     {
         // validate platform
         if (!allowedPlatforms.Contains(platform, StringComparer.OrdinalIgnoreCase))

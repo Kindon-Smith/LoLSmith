@@ -1,26 +1,23 @@
-namespace Utils
+using System.Net;
+using System.Text;
+using System.Text.Json;
+
+namespace Utils;
+
+public static class ApiResponseValidator
 {
-    public static class ApiResponseValidator
+    public static void VerifyStatusCode(HttpResponseMessage res)
     {
-        public static void VerifyStatusCode(HttpResponseMessage res)
-        {
-            if (res.StatusCode == System.Net.HttpStatusCode.NotFound)
-            {
-                throw new KeyNotFoundException("Summoner not found");
-            }
-            else if (res.StatusCode == System.Net.HttpStatusCode.Forbidden ||
-                    res.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-            {
-                throw new InvalidOperationException("Invalid or Expired Riot API key");
-            }
-            else if (res.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
-            {
-                throw new InvalidOperationException("Rate limited by Riot API");
-            }
-            else
-            {
-                res.EnsureSuccessStatusCode();
-            }
-        }
+        if (res.IsSuccessStatusCode) return;
+
+        var status = (int)res.StatusCode;
+        var reason = res.ReasonPhrase ?? "Error";
+
+        // Try read body for more detail
+        string body = "";
+        try { body = res.Content.ReadAsStringAsync().GetAwaiter().GetResult(); } catch { }
+
+        var msg = $"HTTP {(int)res.StatusCode} {reason}{(string.IsNullOrWhiteSpace(body) ? "" : $" | Body: {body}")}";
+        throw new HttpRequestException(msg, null, res.StatusCode);
     }
 }
