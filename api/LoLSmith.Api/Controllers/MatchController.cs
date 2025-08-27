@@ -4,6 +4,7 @@ using Services.Riot;
 using Microsoft.EntityFrameworkCore;
 using Services.Riot.Dtos;
 using LoLSmith.Api.Controllers.Mappers;
+using Microsoft.AspNetCore.Authorization;
 
 [ApiController]
 [Route("api/matches")]
@@ -19,7 +20,7 @@ public class MatchController : ControllerBase
         _db = db;
     }
 
-    [HttpGet("{platform}/{puuid}")]
+    [Authorize][HttpGet("{platform}/{puuid}")]
     public async Task<IActionResult> GetMatchesByPuuid(string platform, string puuid, CancellationToken ct)
     {
         // validate platform
@@ -102,7 +103,7 @@ public class MatchController : ControllerBase
         return Ok(matchListDto);
     }
 
-    [HttpGet("{platform}/details/{matchId}")]
+    [Authorize][HttpGet("{platform}/details/{matchId}")]
     public async Task<IActionResult> GetMatchDetailsById(string platform, string matchId, CancellationToken ct = default)
     {
         // validate platform
@@ -119,29 +120,40 @@ public class MatchController : ControllerBase
 
         // Find or create the match in the DB
         var match = await _db.Matches.FirstOrDefaultAsync(m => m.MatchId == matchId, ct);
+
         if (match == null)
         {
             match = new Match { MatchId = matchId, InsertedAt = DateTime.UtcNow };
             _db.Matches.Add(match);
         }
 
-        // Map fields from InfoDto to Match entity
+        // Map fields from InfoDto to Match entity (populate or update)
         var info = matchDetailsDto.Info;
-        match.GameCreation = DateTimeOffset.FromUnixTimeMilliseconds(info.GameCreation).UtcDateTime;
-        match.GameDuration = info.GameDuration;
-        match.GameMode = info.GameMode;
-        match.GameType = info.GameType;
-        match.GameVersion = info.GameVersion;
-        match.MapId = info.MapId;
-        match.PlatformId = info.PlatformId;
-        match.QueueId = info.QueueId;
+        if (info is not null)
+        {
+            match.GameCreation = DateTimeOffset.FromUnixTimeMilliseconds(info.GameCreation).UtcDateTime;
+            match.GameDuration = info.GameDuration;
+            match.GameMode = info.GameMode;
+            match.GameType = info.GameType;
+            match.GameVersion = info.GameVersion;
+            match.MapId = info.MapId;
+            match.PlatformId = info.PlatformId;
+            match.QueueId = info.QueueId;
+        }
+
+        // Persist only if new or modified
+        var entry = _db.Entry(match);
+        if (entry.State == EntityState.Added || entry.State == EntityState.Modified)
+        {
+            await _db.SaveChangesAsync(ct);
+        }
 
         // persist participants -> create Users and UserMatches for each participant PUUID
         var participants = matchDetailsDto.Metadata?.Participants != null
             ? matchDetailsDto.Metadata.Participants?.ToList()
             : new List<string>();
 
-        if (participants.Count > 0)
+        if (participants?.Count > 0)
         {
             // fetch existing users for these puuids
             var existingUsers = await _db.Users
@@ -225,5 +237,15 @@ public class MatchController : ControllerBase
                 Error = ex.Message
             });
         }
+    }
+
+    [Authorize][HttpGet("debug/match/{matchId}")]
+    public async Task<IActionResult> DebugGetMatch(string matchId)
+    {
+        var m = await _db.Matches
+            .AsNoTracking()
+            .SingleOrDefaultAsync(x => x.MatchId == matchId);
+        if (m is null) return NotFound(new { message = "Match not found" });
+        return Ok(m);
     }
 }

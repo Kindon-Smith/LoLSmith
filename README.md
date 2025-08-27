@@ -1,16 +1,24 @@
 # LoLSmith
 
-A League of Legends match tracking and analysis application built with .NET, React, and SQLite. Uses the Riot Games API to fetch and store match history data with efficient many-to-many relationship handling.
+A League of Legends match tracking and analysis backend built with .NET and SQLite. The API fetches match history from the Riot Games API, stores unique matches and user↔match relationships, and exposes endpoints for lightweight match lists and full match details.
 
-## Features
+## Current (accurate) Summary
 
-- **Match History Tracking**: Fetch and store player match history from Riot API
-- **Efficient Data Storage**: Deduplicates matches across multiple users
-- **Many-to-Many Relationships**: Links users to matches with proper database design
-- **RESTful API**: Clean endpoints for summoner lookup and match data
-- **Rate Limiting Ready**: Architecture supports Riot API rate limiting
+- Backend: ASP.NET Core 9 Web API (api/LoLSmith.Api)
+- Database: SQLite (Db/LoLSmith.db) using EF Core
+- External API: Riot Games API v5 (server-side only)
+- Frontend: React (planned; API configured with CORS for local dev)
 
-## Structure
+## What it does today
+
+- Fetches a player's recent match IDs (lightweight) and stores them as unique Match records.
+- Exposes a details endpoint that fetches full match data from Riot and populates Match fields (GameCreation, GameDuration, GameMode, etc.).
+- Stores many-to-many relationships between Users and Matches via a join table (UserMatches).
+- Provides debug endpoints to inspect DB counts and individual matches (e.g., `/api/matches/debug/tables`, `/api/matches/debug/match/{matchId}`).
+- Implements an outgoing Riot API rate limiter (process-local token-bucket) via a DelegatingHandler (RateLimitHandler) to avoid exceeding Riot dev limits.
+- Has a CORS policy for local React dev (`DevCors`) allowing `http://localhost:3000`.
+
+## Project layout
 
 ```
 ├── api/LoLSmith.Api/          # ASP.NET Core Web API
